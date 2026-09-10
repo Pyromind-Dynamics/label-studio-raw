@@ -9,7 +9,7 @@ COPY --from=ls-source /label-studio/web/dist/apps/labelstudio/ \
                       /label-studio/web/dist/apps/labelstudio/
 
 # 只服务静态文件的 nginx 配置
-COPY nginx-static.conf /etc/nginx/nginx.conf
+# COPY nginx-static.conf /etc/nginx/nginx.conf
 
 # RUN mkdir -p /tmp/proxy_temp /tmp/client_temp /tmp/fastcgi_temp \
 #              /tmp/uwsgi_temp /tmp/scgi_temp /var/cache/nginx \
