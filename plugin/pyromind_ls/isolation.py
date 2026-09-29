@@ -22,7 +22,7 @@ def organization_for(user):
     return Organization.objects.filter(created_by=user).first()
 
 
-def ensure_private_organization(user):
+def ensure_private_organization(user, title=None):
     """Move an account into an organization of its own.
 
     The first account to register owns the organization upstream created for
@@ -30,9 +30,12 @@ def ensure_private_organization(user):
     """
     existing = organization_for(user)
     if existing is not None:
+        if title and existing.title != title:
+            existing.title = title
+            existing.save(update_fields=['title'])
         return existing
 
-    organization = create_organization(created_by=user, title=user.email)
+    organization = create_organization(created_by=user, title=title or user.email)
     user.active_organization = organization
     user.save(update_fields=['active_organization'])
     # A leftover membership in the shared organization would still expose every

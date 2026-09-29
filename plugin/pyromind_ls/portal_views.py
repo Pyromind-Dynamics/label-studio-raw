@@ -102,7 +102,7 @@ def sso(request):
     try:
         from pyromind_ls.isolation import organization_for
 
-        account = portal_api.ensure_label_studio_user(config, user.email)
+        account = portal_api.ensure_label_studio_user(config, user)
     except Exception as exc:  # noqa: BLE001 - surfaced as a 502 to the browser
         logger.exception('Label Studio SSO could not prepare the account: %s', exc)
         return _error('Label Studio account is unavailable', 502)
@@ -137,7 +137,7 @@ def token(request):
     except _Rejected as rejected:
         return rejected.response
     try:
-        account = portal_api.ensure_label_studio_user(config, user.email)
+        account = portal_api.ensure_label_studio_user(config, user)
         value = portal_api.issue_api_token(account)
     except Exception as exc:  # noqa: BLE001 - surfaced as a 502 to the caller
         logger.exception('Label Studio token lookup failed: %s', exc)

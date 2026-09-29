@@ -261,43 +261,67 @@ def get_request_cookie() -> str:
 # ---------------------------------------------------------------------------
 
 
-def derive_sso_password(email: str, secret: str) -> str:
-    """Derive a purpose-separated password for a portal-managed LS account."""
-    if not email or not secret:
+# Label Studio identifies accounts by a unique email, but the platform lets a
+# user change that email. The plugin therefore keys accounts on the platform uid
+# instead: a synthetic address that cannot change, with the real email kept on the
+# private organization title for display. Accounts created before this change
+# keep their email address and are left untouched; the uid-keyed account starts
+# empty.
+ACCOUNT_EMAIL_DOMAIN = 'label-studio.invalid'
+
+
+def account_email(platform_uid: int) -> str:
+    """Return the stable Label Studio login address for a platform account."""
+    if platform_uid <= 0:
+        raise PortalIntegrationError('Portal account has no usable uid')
+    return f'pyromind-uid-{platform_uid}@{ACCOUNT_EMAIL_DOMAIN}'
+
+
+def derive_account_password(platform_uid: int, secret: str) -> str:
+    """Derive a purpose-separated password from the stable platform uid."""
+    if platform_uid <= 0 or not secret:
         raise PortalIntegrationError('Label Studio SSO is not configured')
     digest = hmac.new(
         secret.encode('utf-8'),
-        f'label-studio-account-v1:{email.strip().lower()}'.encode('utf-8'),
+        f'label-studio-account-uid-v1:{platform_uid}'.encode('utf-8'),
         hashlib.sha256,
     ).digest()
     material = base64.urlsafe_b64encode(digest).rstrip(b'=').decode('ascii')
     return f'Pm_{material}Aa1!'
 
 
-def ensure_label_studio_user(config: PortalConfig, email: str):
+def ensure_label_studio_user(config: PortalConfig, portal_user: PortalUser):
     """Return the Label Studio account for a portal user, creating it if needed.
 
-    The password is derived, not chosen, because nobody ever types it: the SSO
-    route logs the browser in directly and the token route only reads the account's
-    API token. Deriving it from the email keeps the account reachable by Label
-    Studio's own login form for as long as the deployment keeps the secret.
+    The account is keyed by the platform uid rather than the platform email: the
+    email is mutable, and matching on it would strand the account, its private
+    organization and every project under it as soon as the email changed. The
+    password is derived from the same uid so Label Studio's own login form keeps
+    working even though nobody ever types it.
     """
     from users.models import User
 
     from pyromind_ls.isolation import ensure_private_organization
 
-    address = email.strip().lower()
+    address = account_email(portal_user.uid)
     user = User.objects.filter(email__iexact=address).first()
-    if user is not None:
-        return user
-    user = User.objects.create_user(
-        email=address,
-        password=derive_sso_password(address, config.sso_secret),
-    )
-    user.username = address.split('@')[0]
-    user.save(update_fields=['username'])
-    ensure_private_organization(user)
-    logger.info('Created Label Studio account %s for portal user', address)
+    if user is None:
+        user = User.objects.create_user(
+            email=address,
+            password=derive_account_password(portal_user.uid, config.sso_secret),
+        )
+        logger.info(
+            'Created Label Studio account %s for portal uid %s',
+            address,
+            portal_user.uid,
+        )
+    # The private organization's title carries the mutable platform email, so it
+    # stays recognizable in the UI and follows an email change.
+    ensure_private_organization(user, title=portal_user.email)
+    username = (portal_user.username or portal_user.email.split('@')[0]).strip()
+    if username and user.username != username[:256]:
+        user.username = username[:256]
+        user.save(update_fields=['username'])
     return user
 
 
